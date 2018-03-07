@@ -122,7 +122,7 @@ namespace OracleDAL
                     object tempValue = null;
                     if (rdr.IsDBNull(i))
                     {
-                        string typeFullName = obj.GetProperty(rdr.GetName(i)).PropertyType.FullName;
+                        string typeFullName = obj.GetProperty(rdr.GetName(i).ToLower()).PropertyType.FullName;
                         tempValue = GetDBNullValue(typeFullName);
                     }
                     else
@@ -150,26 +150,26 @@ namespace OracleDAL
             Type obj = t.GetType();
 
             if (rdr.Read())
-            {                
+            {
                 for (int i = 0; i < rdr.FieldCount; i++)
                 {
                     object tempValue = null;
                     if (rdr.IsDBNull(i))
                     {
-                        string typeFullName = obj.GetProperty(rdr.GetName(i)).PropertyType.FullName;
+                        string typeFullName = obj.GetProperty(rdr.GetName(i).ToLower()).PropertyType.FullName;
                         tempValue = GetDBNullValue(typeFullName);
                     }
                     else
                     {
                         tempValue = rdr.GetValue(i);
                     }
-                    obj.GetProperty(rdr.GetName(i)).SetValue(t, tempValue, null);
+                    obj.GetProperty(rdr.GetName(i).ToLower()).SetValue(t, tempValue, null);
                 }
                 return t;
             }
             else
                 return null;
-        }
+        }               
 
         /// <summary>    
         /// Retorna um valor padrão para DBNull de acordo com o tipo de dados
@@ -182,7 +182,10 @@ namespace OracleDAL
 
             if (typeFullName == OracleDbType.Varchar2.ToString().ToLower())           
                 return String.Empty;
-            
+
+            if (typeFullName == OracleDbType.Char.ToString().ToLower())
+                return String.Empty; // O C# entende o CHAR do Oracle como String
+
             if (typeFullName == OracleDbType.Int32.ToString().ToLower())            
                 return 0;
             
@@ -194,7 +197,13 @@ namespace OracleDAL
             
             if (typeFullName == OracleDbType.Int16.ToString().ToLower())            
                 return 0;
-            
+
+            if (typeFullName == OracleDbType.Decimal.ToString().ToLower())
+                return 0;
+
+            if (typeFullName == OracleDbType.Double.ToString().ToLower())
+                return 0;
+
             return null;
         }        
 
