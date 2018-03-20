@@ -18,14 +18,19 @@ namespace OracleDAL
     {
         static void Main(string[] args)
         {
-            OracleClient.ConnectionString = "User Id=usuario;Password=senha;Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=192.168.0.1)(PORT=1521))(CONNECT_DATA=(SERVER = DEDICATED)(SERVICE_NAME=SERV)))";
+            string ConnectionString = "User Id=usuario;Password=senha;Data Source=(DESCRIPTION=(ADDRESS=(PROTOCOL=tcp)(HOST=192.168.0.1)(PORT=1521))(CONNECT_DATA=(SERVER = DEDICATED)(SERVICE_NAME=SERV)))";                        
             string sql = "select id, nome from teste";
-            List<Teste> temps = OracleClient.QueryForList<Teste>(sql).ToList();
-            foreach (var item in temps)
+
+            using (OracleClient conn = new OracleClient(ConnectionString))
             {
-                Console.WriteLine(item.Id + "   " + item.Nome);
+                List<Teste> temps = conn.QueryForList<Teste>(sql).ToList();            
+
+                foreach (var item in temps)
+                {
+                    Console.WriteLine(item.Id + "   " + item.Nome);
+                }            
+                Console.ReadLine();
             }
-            Console.ReadLine();
         }
     }
 
