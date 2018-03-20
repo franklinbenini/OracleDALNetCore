@@ -5,17 +5,24 @@ using System.Data;
 
 namespace OracleDAL
 {
-    public class OracleClient
+    public class OracleClient : IDisposable
     {
-        public static string ConnectionString { set; get; }
-        private static OracleConnection conn = null;
-     
-        private static bool Open()
+        private string connString = null;
+        private OracleConnection conn = null;
+        private Dictionary<string, object> parametros = new Dictionary<string, object>();
+
+        public OracleClient(string ConnectionString)
         {
-            conn = new OracleConnection(ConnectionString);
+            this.connString = ConnectionString;
+        }
+
+        private bool Open()
+        {            
+            this.conn = new OracleConnection(connString);
+                        
             try
             {
-                conn.Open();
+                this.conn.Open();
                 return true;
             }
             catch (Exception ex)
@@ -24,91 +31,214 @@ namespace OracleDAL
             }
         }
 
-        private static void Close()
+        private void Close()
         {
-            if (conn != null)
+            if (this.conn != null)
             {
-                conn.Close();
-                conn.Dispose();
-                conn = null;
-            }
-        }
-
-        public static int CreateUpdateDelete(string sql)
-        {
-            try
-            {
-                Open();
-                OracleCommand cmd = new OracleCommand(sql, conn);
-                return cmd.ExecuteNonQuery();                
-            }
-            catch (Exception ex)
-            {
-                throw ex;
-            }
-            finally
-            {
-                Close();
-            }
-        }
-
-        public static IList<T> QueryForList<T>(string sql)
-        {
-            try
-            {
-                Open();
-                OracleDataReader Dtr = QueryForReader(sql);
-                return Dtr2List<T>(Dtr);
-            }
-            catch (Exception ex)
-            {
-                throw ex;
-            }
-            finally
-            {
-                Close();
-            }
-        }
-
-        public static object QueryForObj<T>(string sql)
-        {
-            try
-            {
-                Open();
-                OracleDataReader Dtr = QueryForReader(sql);
-                return Dtr2Obj<T>(Dtr);                
-            }
-            catch (Exception ex)
-            {
-                throw ex;
-            }
-            finally
-            {
-                Close();
-            }
-        }
-
-        private static OracleDataReader QueryForReader(string sql)
-        {
-            try
-            {
-                OracleCommand cmd = conn.CreateCommand();
-                cmd.CommandText = sql;
-                return cmd.ExecuteReader();                
-            }
-            catch (Exception ex)
-            {
-                throw ex;
+                this.parametros.Clear();
+                this.conn.Close();
+                this.conn.Dispose();
+                this.conn = null;
             }
         }
         
+        public void AddParametro(string nome, object valor)
+        {       
+            this.parametros.Add(nome, valor);
+        }
+
+        private void AdicionaParametrosNoComando(OracleCommand comando)
+        {
+            OracleParameter _dbParametro;
+            foreach (var param in parametros)
+            {
+                _dbParametro = comando.CreateParameter();
+                _dbParametro.ParameterName = param.Key;
+                _dbParametro.Value = param.Value;
+                comando.Parameters.Add(_dbParametro);
+            }
+            _dbParametro = null;
+            parametros.Clear();
+        }
+
+        public int CreateUpdateDelete(string sql)
+        {
+            try
+            {
+                Open();
+                using (OracleCommand cmd = new OracleCommand(sql, conn))
+                {                    
+                    if (parametros != null)
+                    {
+                        AdicionaParametrosNoComando(cmd);
+                    }
+                    return cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            finally
+            {                
+                Close();
+            }
+        }
+
+        public IList<T> QueryForList<T>(string sql)
+        {
+            try
+            {
+                Open();
+                using (OracleDataReader Dtr = QueryForReader(sql))
+                {
+                    return Dtr2List<T>(Dtr);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            finally
+            {
+                Close();
+            }
+        }
+
+        public object QueryForObj<T>(string sql)
+        {
+            try
+            {
+                Open();
+                using (OracleDataReader Dtr = QueryForReader(sql))
+                {
+                    return Dtr2Obj<T>(Dtr);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            finally
+            {
+                Close();
+            }
+        }
+
+        private OracleDataReader QueryForReader(string sql)
+        {
+            try
+            {
+                using (OracleCommand cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = sql;
+                    return cmd.ExecuteReader();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+        }
+
+        public IList<T> ProcForList<T>(string nomeProcedure)
+        {
+            return ProcForList<T>(nomeProcedure, "P_RETORNO");
+        }
+
+        public IList<T> ProcForList<T>(string nomeProcedure, string nomeParRetorno)
+        {
+            try
+            {
+                Open();
+                using (OracleDataReader Dtr = ProcForReader(nomeProcedure, nomeParRetorno))
+                {
+                    return Dtr2List<T>(Dtr);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            finally
+            {
+                Close();
+            }
+        }
+
+        public object ProcForObj<T>(string nomeProcedure)
+        {
+            return ProcForObj<T>(nomeProcedure, "P_RETORNO");
+        }
+
+        public object ProcForObj<T>(string nomeProcedure, string nomeParRetorno)
+        {
+            try
+            {
+                Open();
+                using (OracleDataReader Dtr = ProcForReader(nomeProcedure, nomeParRetorno))
+                {
+                    return Dtr2Obj<T>(Dtr);
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            finally
+            {
+                Close();
+            }
+        }
+                
+        private OracleDataReader ProcForReader(string nomeProcedure, string nomeParRetorno)
+        {               
+            using (OracleCommand cmd = new OracleCommand(nomeProcedure, conn))
+            {
+                cmd.CommandType = CommandType.StoredProcedure;
+                if (parametros != null)
+                {
+                    AdicionaParametrosNoComando(cmd);
+                }
+                cmd.Parameters.Add(new OracleParameter(nomeParRetorno, OracleDbType.RefCursor)).Direction = ParameterDirection.Output;                        
+                cmd.CommandText = nomeProcedure;
+                return cmd.ExecuteReader();
+            }            
+        }
+
+        public int ProcNonQuery(string nomeProcedure)
+        {
+            try
+            {
+                Open();
+                using (OracleCommand cmd = new OracleCommand(nomeProcedure, conn))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    if (parametros != null)
+                    {
+                        AdicionaParametrosNoComando(cmd);
+                    }
+                    cmd.CommandText = nomeProcedure;
+                    return cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+            finally
+            {
+                Close();
+            }
+        }
+
         /// <summary>
         /// Transforma um DataReader em uma Lista Genérica
         /// </summary>
         /// <typeparam name="T">Tipo do Objeto (Classe)</typeparam>
         /// <param name="rdr">DataReader a ser transformado</param>
-        /// <returns>Objeto IList (Lista Genérica)</returns>
-        private static IList<T> Dtr2List<T>(OracleDataReader rdr)
+        /// <returns>Objeto List (Lista Genérica)</returns>
+        private IList<T> Dtr2List<T>(OracleDataReader rdr)
         {
             IList<T> list = new List<T>();
 
@@ -144,7 +274,7 @@ namespace OracleDAL
         /// <typeparam name="T">Tipo do Objeto (Classe)</typeparam>
         /// <param name="rdr">DataReader a ser transformado</param>
         /// <returns>Objeto</returns>
-        private static object Dtr2Obj<T>(OracleDataReader rdr)
+        private object Dtr2Obj<T>(OracleDataReader rdr)
         {
             T t = System.Activator.CreateInstance<T>();
             Type obj = t.GetType();
@@ -163,6 +293,8 @@ namespace OracleDAL
                     {
                         tempValue = rdr.GetValue(i);
                     }
+                    
+                    
                     obj.GetProperty(rdr.GetName(i).ToLower()).SetValue(t, tempValue, null);
                 }
                 return t;
@@ -176,84 +308,100 @@ namespace OracleDAL
         /// </summary>    
         /// <param name="typeFullName">O nome completo do tipo de dados. Ex.: System.Int32</param>    
         /// <returns>O valor padrão do tipo de dados</returns>
-        private static object GetDBNullValue(string typeFullName)
+        private object GetDBNullValue(string typeFullName)
         {
             typeFullName = typeFullName.ToLower();
 
+            // Mais comuns
             if (typeFullName == OracleDbType.Varchar2.ToString().ToLower())           
                 return String.Empty;
+
+            if (typeFullName == OracleDbType.Int64.ToString().ToLower())
+                return 0;
+
+            if (typeFullName == OracleDbType.Date.ToString().ToLower())
+                return Convert.ToDateTime("");
 
             if (typeFullName == OracleDbType.Char.ToString().ToLower())
                 return String.Empty; // O C# entende o CHAR do Oracle como String
 
-            if (typeFullName == OracleDbType.Int32.ToString().ToLower())            
+
+            // Menos comuns
+            if (typeFullName == OracleDbType.Double.ToString().ToLower())
                 return 0;
             
-            if (typeFullName == OracleDbType.Date.ToString().ToLower())            
-                return Convert.ToDateTime("");
-            
-            if (typeFullName == OracleDbType.Boolean.ToString().ToLower())            
-                return false;
-            
-            if (typeFullName == OracleDbType.Int16.ToString().ToLower())            
+            if (typeFullName == OracleDbType.Int32.ToString().ToLower())
                 return 0;
 
             if (typeFullName == OracleDbType.Decimal.ToString().ToLower())
                 return 0;
 
-            if (typeFullName == OracleDbType.Double.ToString().ToLower())
+            if (typeFullName == OracleDbType.Boolean.ToString().ToLower())
+                return false;
+
+            if (typeFullName == OracleDbType.Long.ToString().ToLower())
+                return String.Empty;
+            
+            if (typeFullName == OracleDbType.Int16.ToString().ToLower())
                 return 0;
-
+            
             return null;
-        }        
-
-        public static int ExcuteProc(string ProcName)
-        {
-            return ExcuteSQL(ProcName, null, CommandType.StoredProcedure);
         }
 
-        public static int ExcuteProc(string ProcName, OracleParameter[] pars)
+        public void Dispose()
         {
-            return ExcuteSQL(ProcName, pars, CommandType.StoredProcedure);
+            this.Close();            
         }
 
-        public static int ExcuteSQL(string strSQL)
-        {
-            return ExcuteSQL(strSQL, null);
-        }
+        //public static int ExecuteProc(string ProcName)
+        //{
+        //    return ExecuteSQL(ProcName, null, CommandType.StoredProcedure);
+        //}
 
-        public static int ExcuteSQL(string strSQL, OracleParameter[] paras)
-        {
-            return ExcuteSQL(strSQL, paras, CommandType.Text);
-        }
+        //public static int ExecuteProc(string ProcName, OracleParameterCollection pars)
+        //{
+        //    return ExecuteSQL(ProcName, pars, CommandType.StoredProcedure);
+        //}
 
-        /// <summary>
-        /// Executa uma instrução SQL
-        /// </summary>    
-        /// <param name="strSQL">Instrução SQL</param>    
-        /// <param name="paras">Lista de parâmetros. Sem parametros passar null</param>    
-        /// <param name="cmdType">Tipo de comando</param>    
-        /// <returns>Retorna o número de linhas afetadas</returns>    
-        public static int ExcuteSQL(string strSQL, OracleParameter[] paras, CommandType cmdType)
-        {
-            try
-            {                
-                Open();
-                OracleCommand cmd = new OracleCommand(strSQL, conn);
-                cmd.CommandType = cmdType;
-                if (paras != null)                
-                    cmd.Parameters.AddRange(paras);
-                
-                return cmd.ExecuteNonQuery();
-            }
-            catch (Exception ex)
-            {
-                throw ex;
-            }
-            finally
-            {
-                Close();
-            }
-        }        
+        //public static int ExecuteSQL(string strSQL)
+        //{
+        //    return ExecuteSQL(strSQL, null);
+        //}
+
+        //public static int ExecuteSQL(string strSQL, OracleParameterCollection paras)
+        //{
+        //    return ExecuteSQL(strSQL, paras, CommandType.Text);
+        //}
+
+        ///// <summary>
+        ///// Executa uma instrução SQL
+        ///// </summary>    
+        ///// <param name="strSQL">Instrução SQL</param>    
+        ///// <param name="paras">Lista de parâmetros. Sem parametros passar null</param>    
+        ///// <param name="cmdType">Tipo de comando</param>    
+        ///// <returns>Retorna o número de linhas afetadas</returns>    
+        //public static int ExecuteSQL(string strSQL, OracleParameterCollection paras, CommandType cmdType)
+        //{               
+        //    try
+        //    {                
+        //        Open();
+        //        using (OracleCommand cmd = new OracleCommand(strSQL, conn))
+        //        {
+        //            cmd.CommandType = cmdType;
+        //            if (paras != null)
+        //                cmd.Parameters.Add(paras);
+
+        //            return cmd.ExecuteNonQuery();
+        //        }
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        throw ex;
+        //    }
+        //    finally
+        //    {
+        //        Close();
+        //    }
+        //}
     }
 }
